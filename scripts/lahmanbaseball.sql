@@ -39,33 +39,34 @@ appearances table
 
 SELECT 
 	p.namefirst || ' ' || p.namelast AS fullname,
-	MIN(p.height) AS shortest_player,
+	MIN(p.height),
 	(SELECT a.g_all 
-		FROM appearances AS a) AS total_games,
-	(SELECT name
-		FROM teams) AS team_name
+		FROM appearances AS a
+		WHERE a.playerid = p.playerid) AS total_games,
+	(SELECT t.name
+		FROM teams AS t
+		) AS team_name
 FROM people AS p
-GROUP BY p.namefirst, p.namelast
+GROUP BY p.namefirst, p.namelast, p.height, p.playerid
+ORDER BY p.height ASC
 LIMIT 1
+
+--THIS KEEPS SHOWING A NULL TEAM VALUE
+WITH team_name AS (SELECT name FROM teams AS t)
 
 SELECT
     p.namefirst AS first_name,
     p.namelast AS last_name,
     p.height,
-    (
-        SELECT a.g_all
-        FROM appearances a
-        WHERE a.playerid = p.playerid
-    ) AS games_played,
-    (
-        SELECT a.teamid
-        FROM appearances a
-        WHERE a.playerid = p.playerid
-    ) AS team
-FROM people p
+    	(SELECT a.g_all
+        	FROM appearances a
+        	WHERE a.playerid = p.playerid) AS games_played,
+		(SELECT team_name.name FROM team_name) as team_name
+FROM people AS p
 ORDER BY p.height ASC
 LIMIT 1
 
+    		
 
 -- 3. Find all players in the database who played at Vanderbilt University. Create a list showing each player’s first and last names as well as the total salary they earned in the major leagues. Sort this list in descending order by the total salary earned. Which Vanderbilt player earned the most money in the majors?
 fullname
@@ -75,11 +76,13 @@ Schools Table
 collegeplaying Table
 People Table
 
+-- CANNOT GET THIS TO GROUP BY PLAYERID. NEED A TOTAL FOR EACH PLAYER
+WITH salary AS (SELECT SUM(salary)::numeric::money FROM salaries)
 SELECT 
 	DISTINCT p.playerid,
 	p.namefirst || ' ' || p.namelast AS fullname,
 	s.schoolname,
-	SUM(sa.salary)::numeric::money
+	SUM(sa.salary) OVER (PARTITION BY salary) AS salary
 FROM people p
 INNER JOIN salaries AS sa
 	ON  sa.playerid = p.playerid
@@ -88,12 +91,11 @@ INNER JOIN collegeplaying AS cp
 INNER JOIN schools AS s
 	ON cp.schoolid = s.schoolid
 	WHERE s.schoolname = 'Vanderbilt University'
-GROUP BY p.playerid, fullname, s.schoolname, sa.salary
-ORDER BY fullname
+GROUP BY sa.salary, p.playerid, fullname, s.schoolname
+ORDER BY playerid
 
 SELECT DISTINCT p.playerid
 FROM people as p
-
 
 SELECT
 	schoolname
@@ -101,14 +103,32 @@ FROM schools
 GROUP BY schoolname 
 ORDER BY schoolname DESC
 
-
--- 4. Using the fielding table, group players into three groups based on their position: label players with position OF as "Outfield", those with position "SS", "1B", "2B", and "3B" as "Infield", and those with position "P" or "C" as "Battery". Determine the number of putouts made by each of these three groups in 2016.
-position_group
-total_po
-
+-- 4. Using the fielding table, group players into three groups bas 
 Fielding Table
-for 2016
+Putout's for 3 groups Battery, Infield, Outfield
+2016
 
+--Use a CASE WHEN
+SELECT pos, PO, YearID,
+CASE
+    WHEN pos IN ('OF') THEN 'Outfield'
+    WHEN pos IN ('SS', '1B', '2B', '3B') THEN 'Infield'
+	WHEN pos IN ('P', 'C') THEN 'Battery'\
+ELSE 'NA'
+END 
+FROM fielding;
+
+SELECT 
+	PO, 
+	YearID,
+COUNT (CASE WHEN pos IN ('OF') THEN 'Outfield' END) AS Outfield,
+COUNT (CASE WHEN pos IN ('SS', '1B', '2B', '3B') THEN 'Infield' END) AS Infield,
+COUNT (CASE	WHEN pos IN ('P', 'C') THEN 'Battery' END) AS Battery
+FROM fielding
+WHERE yearid = '2016'
+GROUP BY PO, YearID 
+ORDER BY po DESC
+LIMIT 3;
 
 -- 5. Find the average number of strikeouts per game by decade since 1920. Round the numbers you report to 2 decimal places. Do the same for home runs per game. Do you see any trends?
 decade
@@ -127,20 +147,52 @@ sb_pct
 75.4716981132075472
 What percentage of the time
 
--- 8. Using the attendance figures from the homegames table, find the teams and parks which had the top 5 average attendance per game in 2016 (where average attendance is defined as total attendance divided by number of games). Only consider parks where there were at least 10 games played. Report the park name, team name, and average attendance. Repeat for the lowest 5 average attendance.
+WITH most_wins AS (
+	SELECT
+		yearid,
+		MAX(w) AS w
+	FROM teams
+	WHERE yearid >= 1970
+	GROUP BY yearid
+	ORDER BY yearid
+	),
+most_win_teams AS (
+	SELECT 
+		yearid,
+		name,
+		wswin
+	FROM teams
+	INNER JOIN most_wins
+	USING(yearid, w)
+)
 SELECT 
-park_name
-attendance
-name
-games
-attendance_per_game
-FROM homegames
-INNER parks
+	(SELECT COUNT(*)
+	 FROM most_win_teams
+	 WHERE wswin = 'N'
+	) * 100.0 /
+	(SELECT COUNT(*)
+	 FROM most_win_teams
+	);
+
+-- 8. Using the attendance figures from the homegames table, find the teams and parks which had the top 5 average attendance per game in 2016 
+--(where average attendance is defined as total attendance divided by number of games). 
+--Only consider parks where there were at least 10 games played. Report the park name, team name, and average attendance. Repeat for the lowest 5 average attendance.
+SELECT 
+p.park_name,
+h.attendance,
+t.name AS team_name,
+h.games,
+ROUND(h.attendance)/h.games AS avg_attendance
+FROM homegames AS h
+INNER JOIN parks AS p
 USING (park)
-INNER temas
-ON team = teamid AND games
-WHERE
-ORDER BY
+INNER JOIN teams AS t
+ON h.team = t.teamid 
+WHERE yearid = '2016' AND games >= '10'
+GROUP BY p.park_name, h.games, t.name, h.attendance
+ORDER BY avg_attendance DESC 
+LIMIT 5
+
 
 
 -- 9. Which managers have won the TSN Manager of the Year award in both the National League (NL) and the American League (AL)? Give their full name and the teams that they were managing when they won the award.
@@ -149,8 +201,44 @@ yearid
 Igid
 name
 
+WITH both_league_winners AS (
+	SELECT
+		playerid
+	FROM awardsmanagers
+	WHERE awardid = 'TSN Manager of the Year'
+		AND lgid IN ('AL', 'NL')
+	GROUP BY playerid
+	HAVING COUNT(DISTINCT lgid) = 2
+	) -- there are only 2 people that fit this criteria.
 
--- 10. Find all players who hit their career highest number of home runs in 2016. Consider only players who have played in the league for at least 10 years, and who hit at least one home run in 2016. Report the players' first and last names and the number of home runs they hit in 2016.
+-- SELECT 
+-- 	* 
+-- FROM awardsmanagers 
+-- WHERE awardid = 'TSN Manager of the Year' 
+-- 	AND  lgid IN ('AL', 'NL')
+-- G-- 100 rows total --60 rows won in both
+
+
+SELECT
+	namefirst || ' ' || namelast AS full_name,
+	yearid,
+	lgid,
+	name
+FROM people
+INNER JOIN both_league_winners
+	USING(playerid)
+INNER JOIN awardsmanagers
+	USING(playerid)
+INNER JOIN managers
+	USING(playerid, yearid, lgid)
+INNER JOIN teams
+	USING(teamid,yearid,lgid)
+WHERE awardid = 'TSN Manager of the Year'
+ORDER BY full_name, yearid;
+
+
+-- 10. Find all players who hit their career highest number of home runs in 2016. Consider only players who have played in the league for at least 10 years, 
+--and who hit at least one home run in 2016. Report the players' first and last names and the number of home runs they hit in 2016.
 full_name
 hr
 
