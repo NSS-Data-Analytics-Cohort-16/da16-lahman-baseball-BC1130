@@ -44,10 +44,24 @@ SELECT
 		FROM appearances AS a
 		WHERE a.playerid = p.playerid) AS total_games,
 	(SELECT t.name
-		FROM teams AS t
-		) AS team_name
+		FROM teams AS t) AS team_name
 FROM people AS p
 GROUP BY p.namefirst, p.namelast, p.height, p.playerid
+ORDER BY p.height ASC
+LIMIT 1
+
+SELECT 
+	p.namefirst || ' ' || p.namelast AS fullname,
+	p.height,
+	p.playerid
+FROM people AS p
+WHERE 
+    t.teamid =(SELECT t.name
+		FROM teams AS t)
+    AND total_games =(SELECT a.g_all 
+		FROM appearances AS a
+		WHERE a.playerid = p.playerid)
+GROUP BY p.height, p.namefirst, p.namelast, p.playerid
 ORDER BY p.height ASC
 LIMIT 1
 
@@ -61,7 +75,7 @@ SELECT
     	(SELECT a.g_all
         	FROM appearances a
         	WHERE a.playerid = p.playerid) AS games_played,
-		(SELECT team_name.name FROM team_name) as team_name
+		(SELECT name FROM teams) as team_name
 FROM people AS p
 ORDER BY p.height ASC
 LIMIT 1
@@ -76,32 +90,45 @@ Schools Table
 collegeplaying Table
 People Table
 
--- CANNOT GET THIS TO GROUP BY PLAYERID. NEED A TOTAL FOR EACH PLAYER
-WITH salary AS (SELECT SUM(salary)::numeric::money FROM salaries)
+
+--THIS IS THE QUERY I USED
+WITH vanderbilt AS (SELECT schoolname FROM schools WHERE schoolname = 'Vanderbilt University')
 SELECT 
-	DISTINCT p.playerid,
 	p.namefirst || ' ' || p.namelast AS fullname,
-	s.schoolname,
-	SUM(sa.salary) OVER (PARTITION BY salary) AS salary
+	SUM(sa.salary::numeric::money) AS salary
 FROM people p
 INNER JOIN salaries AS sa
 	ON  sa.playerid = p.playerid
-INNER JOIN collegeplaying AS cp
+LEFT JOIN vanderbilt
+	ON schoolname
+GROUP BY fullname
+ORDER BY salary DESC;
+
+
+LEFT JOIN collegeplaying AS cp
 	ON p.playerid = cp.playerid
-INNER JOIN schools AS s
-	ON cp.schoolid = s.schoolid
-	WHERE s.schoolname = 'Vanderbilt University'
-GROUP BY sa.salary, p.playerid, fullname, s.schoolname
-ORDER BY playerid
 
 SELECT DISTINCT p.playerid
 FROM people as p
-
+	DISTINCT p.playerid,
 SELECT
-	schoolname
-FROM schools
+	schoolname,
+	p.namefirst,
+	p.namelast
+FROM schools s
+INNER JOIN people p
+WHERE s.schoolname = 'Vanderbilt University'
 GROUP BY schoolname 
 ORDER BY schoolname DESC
+
+SELECT schoolid, schoolname FROM schools WHERE schoolname = 'Vanderbilt University'
+UNION
+SELECT p.namefirst || ' ' || p.namelast AS fullname, playerid FROM people p
+UNION
+SELECT SUM(sa.salary::numeric::money) AS salary, sa.teamid FROM Salaries sa
+
+
+
 
 -- 4. Using the fielding table, group players into three groups bas 
 Fielding Table
@@ -113,7 +140,7 @@ SELECT pos, PO, YearID,
 CASE
     WHEN pos IN ('OF') THEN 'Outfield'
     WHEN pos IN ('SS', '1B', '2B', '3B') THEN 'Infield'
-	WHEN pos IN ('P', 'C') THEN 'Battery'\
+	WHEN pos IN ('P', 'C') THEN 'Battery'
 ELSE 'NA'
 END 
 FROM fielding;
@@ -127,8 +154,7 @@ COUNT (CASE	WHEN pos IN ('P', 'C') THEN 'Battery' END) AS Battery
 FROM fielding
 WHERE yearid = '2016'
 GROUP BY PO, YearID 
-ORDER BY po DESC
-LIMIT 3;
+ORDER BY po DESC;
 
 -- 5. Find the average number of strikeouts per game by decade since 1920. Round the numbers you report to 2 decimal places. Do the same for home runs per game. Do you see any trends?
 decade
@@ -178,20 +204,20 @@ SELECT
 --(where average attendance is defined as total attendance divided by number of games). 
 --Only consider parks where there were at least 10 games played. Report the park name, team name, and average attendance. Repeat for the lowest 5 average attendance.
 SELECT 
-p.park_name,
-h.attendance,
-t.name AS team_name,
-h.games,
-ROUND(h.attendance)/h.games AS avg_attendance
+	p.park_name,
+	h.attendance,
+	t.name AS team_name,
+	h.games,
+	h.attendance/h.games AS avg_attendance
 FROM homegames AS h
 INNER JOIN parks AS p
 USING (park)
 INNER JOIN teams AS t
-ON h.team = t.teamid 
+ON h.team = t.teamidlahman45 AND t.yearid = h.year
 WHERE yearid = '2016' AND games >= '10'
 GROUP BY p.park_name, h.games, t.name, h.attendance
 ORDER BY avg_attendance DESC 
-LIMIT 5
+LIMIT 5;
 
 
 
