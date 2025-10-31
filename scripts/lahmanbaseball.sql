@@ -17,7 +17,7 @@ SELECT year
 FROM homegames
 GROUP BY year
 ORDER BY year
-
+ 
 -- THIS PULLS JUST THE MIN AND MAX YEARS, FROM/TO
 SELECT MIN(year) AS Min_year, MAX(year) AS Max_year
 FROM homegames
@@ -83,44 +83,28 @@ Fielding Table
 Putout's for 3 groups Battery, Infield, Outfield
 2016
 
---Use a CASE WHEN
-SELECT pos, PO, YearID,
-CASE
-    WHEN pos IN ('OF') THEN 'Outfield'
-    WHEN pos IN ('SS', '1B', '2B', '3B') THEN 'Infield'
-	WHEN pos IN ('P', 'C') THEN 'Battery'
-ELSE 'NA'
-END 
-FROM fielding;
-
---THIS IS WHAT I WAS TRYING TO USE BUT COULD NOT GET IT TO GROUP BY TYPE
 SELECT 
-	PO, 
-	YearID,
-	COUNT(CASE WHEN pos IN ('OF') THEN 'Outfield' END) AS Outfield,
-	COUNT(CASE WHEN pos IN ('SS', '1B', '2B', '3B') THEN 'Infield' END) AS Infield,
-	COUNT(CASE	WHEN pos IN ('P', 'C') THEN 'Battery' END) AS Battery
-FROM fielding
-WHERE yearid = '2016'
-GROUP BY PO, YearID,
 	CASE 
 		WHEN pos IN ('OF') THEN 'Outfield'
 		WHEN pos IN ('SS', '1B', '2B', '3B') THEN 'Infield'
 		WHEN pos IN ('P', 'C') THEN 'Battery' 
-	END
-ORDER BY po DESC;
+	END AS positions,
+	SUM(po) AS total_po
+FROM fielding
+WHERE yearid = '2016'
+GROUP BY positions
+
 
 -- 5. Find the average number of strikeouts per game by decade since 1920. Round the numbers you report to 2 decimal places. Do the same for home runs per game. Do you see any trends?
 decade
 so_per_game
 hr_per_game
 
-WITH decade AS (SELECT date_trunc('decade', yearid) FROM batting)
 
 SELECT 
-	ROUND(AVG(so/g)) AS so_per_game,
-	ROUND(AVG(hr/g)) AS hr_per_game,
-	extract(year FROM date_trunc('decade', yearid)) || 's' AS decade
+	ROUND(SUM(so)::numeric/SUM(g)::numeric) AS so_per_game,
+	ROUND(SUM(hr)::numeric/SUM(g)::numeric) AS hr_per_game,
+	yearid/10*10 AS decade
 FROM batting
 WHERE 
 	yearid >= '1920'
@@ -129,16 +113,22 @@ ORDER BY yearid DESC
 ;
 
 
-
 -- 6. Find the player who had the most success stealing bases in 2016, where __success__ is measured as the percentage of stolen base attempts which are successful. (A stolen base attempt results either in a stolen base or being caught stealing.) Consider only players who attempted _at least_ 20 stolen bases.
 full_name
 sb
 attempts
 sb_pct
+yearid
 
-batting table 
-people table
-
+SELECT 
+	p.namefirst || ' ' || p.namelast AS fullname,
+	b.yearid,
+	b.sb >20,
+	b.cs AS tried_to_steal,
+	b.sb_pct
+FROM people AS p
+LEFT JOIN batting AS b
+ON b.playerid = p.playerid
 
 
 -- 7.  From 1970 – 2016, what is the largest number of wins for a team that did not win the world series? What is the smallest number of wins for a team that did win the world series? Doing this will probably result in an unusually small number of wins for a world series champion – determine why this is the case. Then redo your query, excluding the problem year. How often from 1970 – 2016 was it the case that a team with the most wins also won the world series? What percentage of the time?
